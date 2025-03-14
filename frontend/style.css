@@ -91,94 +91,6 @@ header {
     box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
 }
 
-/* Server exclusions */
-.server-exclusions {
-    background: linear-gradient(135deg, #1a2433 0%, #1a1025 100%);
-    border-radius: 6px;
-    padding: 12px;
-    margin-bottom: 15px;
-    text-align: center;
-    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2);
-}
-
-.server-exclusions p {
-    margin-bottom: 10px;
-    color: #66c0f4;
-    font-size: 14px;
-    font-weight: 500;
-}
-
-.exclusion-options {
-    display: flex;
-    justify-content: center;
-    gap: 15px;
-}
-
-.exclusion-option {
-    display: flex;
-    align-items: center;
-    cursor: pointer;
-    padding: 6px 10px;
-    border-radius: 4px;
-    background: linear-gradient(135deg, #2a3f5f 0%, #2b1a45 100%);
-    transition: all 0.2s ease;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
-}
-
-.exclusion-option:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
-    background: linear-gradient(135deg, #3a5070 0%, #3a2a55 100%);
-}
-
-.exclusion-option input[type="checkbox"] {
-    margin-right: 10px;
-    cursor: pointer;
-    width: 16px;
-    height: 16px;
-}
-
-.flag-icon {
-    width: 24px;
-    height: 24px;
-    border-radius: 4px;
-    background-size: cover;
-    background-position: center;
-    margin-right: 10px;
-}
-
-/* Custom checkbox styles */
-.exclusion-option input[type="checkbox"] {
-    appearance: none;
-    -webkit-appearance: none;
-    width: 18px;
-    height: 18px;
-    border: 2px solid #66c0f4;
-    border-radius: 4px;
-    background: transparent;
-    position: relative;
-    margin-right: 12px;
-    transition: all 0.2s ease;
-}
-
-.exclusion-option input[type="checkbox"]:checked {
-    background: #66c0f4;
-    border-color: #66c0f4;
-}
-
-.exclusion-option input[type="checkbox"]:checked::after {
-    content: "✓";
-    position: absolute;
-    color: #1a1a1a;
-    font-size: 14px;
-    left: 3px;
-    top: -1px;
-}
-
-.exclusion-option input[type="checkbox"]:hover {
-    border-color: #9370DB;
-}
-
 /* Container layout */
 .container {
     display: flex;
@@ -272,7 +184,7 @@ header {
     height: 16px;
     margin-right: 8px;
     margin-bottom: 0;
-    background-size: cover;
+    background-size: contain;
     background-position: center;
     background-repeat: no-repeat;
     border-radius: 2px;
@@ -333,12 +245,10 @@ header {
 }
 
 /* Adjust flag sizes in different contexts */
-.server-button .server-flag {
+.server-flag {
     width: 24px;
     height: 16px;
-    margin-right: 8px;
-    margin-bottom: 0;
-    background-size: cover;
+    background-size: contain;
     background-position: center;
     background-repeat: no-repeat;
     border-radius: 2px;
@@ -347,24 +257,10 @@ header {
     image-rendering: crisp-edges;
 }
 
-.report-server .server-flag {
+.ping-result h3 .server-flag {
     width: 24px;
     height: 16px;
-    margin-right: 8px;
-    margin-bottom: 0;
-    background-size: cover;
-    background-position: center;
-    background-repeat: no-repeat;
-    border-radius: 2px;
-    box-shadow: 0 1px 2px rgba(0,0,0,0.2);
-    image-rendering: -webkit-optimize-contrast;
-    image-rendering: crisp-edges;
-}
-
-.server-info .server-flag {
-    width: 24px;
-    height: 16px;
-    background-size: cover;
+    background-size: contain;
     background-position: center;
     background-repeat: no-repeat;
     border-radius: 2px;

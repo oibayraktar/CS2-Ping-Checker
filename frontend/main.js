@@ -1,19 +1,3 @@
-// Steam server regions with their IP addresses (fallback data)
-const FALLBACK_SERVERS = [
-    { region: "North America", country: "US", name: "US East (Virginia)", ip: "162.254.192.73" },
-    { region: "North America", country: "US", name: "US West (Washington)", ip: "162.254.195.71" },
-    { region: "Europe", country: "NL", name: "Amsterdam", ip: "155.133.248.39" },
-    { region: "Europe", country: "DE", name: "Frankfurt", ip: "162.254.197.42" },
-    { region: "Europe", country: "FI", name: "Helsinki", ip: "155.133.246.69" },
-    { region: "Europe", country: "GB", name: "London", ip: "162.254.196.83" },
-    { region: "Europe", country: "ES", name: "Madrid", ip: "155.133.246.34" },
-    { region: "Europe", country: "FR", name: "Paris", ip: "162.254.198.43" },
-    { region: "Europe", country: "SE", name: "Stockholm", ip: "185.25.180.14" },
-    { region: "Europe", country: "AT", name: "Vienna", ip: "146.66.155.66" },
-    { region: "Europe", country: "PL", name: "Warsaw", ip: "155.133.230.34" },
-    { region: "Europe", country: "RU", name: "Moscow", ip: "146.59.16.129" },
-];
-
 // Global variables
 let servers = {};
 let selectedServer = null;
@@ -53,9 +37,6 @@ async function initApp() {
         // Create refresh button
         createRefreshButton();
         
-        // Set up server exclusion handlers
-        setupServerExclusions();
-        
         // Initialize with fallback servers first
         servers = getFallbackServers();
         renderServerList(servers);
@@ -83,36 +64,6 @@ async function initApp() {
     }
 }
 
-// Set up server exclusion handlers
-function setupServerExclusions() {
-    const helsinkiCheckbox = document.getElementById('exclude-helsinki');
-    const stockholmCheckbox = document.getElementById('exclude-stockholm');
-    
-    // Update flag icons
-    document.querySelector('label[for="exclude-helsinki"] .flag-icon').className = 'flag-icon flag-FI';
-    document.querySelector('label[for="exclude-stockholm"] .flag-icon').className = 'flag-icon flag-SE';
-    
-    // Add change event listeners
-    helsinkiCheckbox.addEventListener('change', () => {
-        renderServerList(servers);
-    });
-    
-    stockholmCheckbox.addEventListener('change', () => {
-        renderServerList(servers);
-    });
-}
-
-// Check if a server should be excluded
-function isServerExcluded(server) {
-    const helsinkiExcluded = document.getElementById('exclude-helsinki').checked;
-    const stockholmExcluded = document.getElementById('exclude-stockholm').checked;
-    
-    if (helsinkiExcluded && server.name.includes('Helsinki')) return true;
-    if (stockholmExcluded && server.name.includes('Stockholm')) return true;
-    
-    return false;
-}
-
 // Create refresh button
 function createRefreshButton() {
     const headerElement = document.querySelector('header');
@@ -134,10 +85,11 @@ function createRefreshButton() {
         // Prevent rapid clicking
         if (isRefreshing) return;
         
-        // Check if last refresh was less than 5 seconds ago
+        // Check if last refresh was less than 30 seconds ago
         const now = Date.now();
-        if (now - lastRefreshTime < 5000) {
-            showMessage('Please wait a moment before refreshing again');
+        if (now - lastRefreshTime < 30000) {
+            const remainingTime = Math.ceil((30000 - (now - lastRefreshTime)) / 1000);
+            showMessage(`Please wait ${remainingTime} seconds before refreshing again`);
             return;
         }
         
@@ -158,6 +110,9 @@ function createRefreshButton() {
         } else {
             showMessage('Server list is already up to date');
         }
+        
+        // Update last refresh time
+        lastRefreshTime = Date.now();
     });
     
     // Add to header
@@ -349,33 +304,7 @@ function getCountryFlag(countryCode) {
 
 // Get fallback servers if backend fails
 function getFallbackServers() {
-    const fallbackData = [
-        { region: "North America", country: "United States", country_code: "US", name: "US East (Virginia)", ip: "162.254.192.73" },
-        { region: "North America", country: "United States", country_code: "US", name: "US West (Washington)", ip: "162.254.195.71" },
-        { region: "Europe", country: "Netherlands", country_code: "NL", name: "Amsterdam", ip: "155.133.248.39" },
-        { region: "Europe", country: "Germany", country_code: "DE", name: "Frankfurt", ip: "162.254.197.42" },
-        { region: "Europe", country: "Finland", country_code: "FI", name: "Helsinki", ip: "155.133.246.69" },
-        { region: "Europe", country: "United Kingdom", country_code: "GB", name: "London", ip: "162.254.196.83" },
-        { region: "Europe", country: "Spain", country_code: "ES", name: "Madrid", ip: "155.133.246.34" },
-        { region: "Europe", country: "France", country_code: "FR", name: "Paris", ip: "162.254.198.43" },
-        { region: "Europe", country: "Sweden", country_code: "SE", name: "Stockholm", ip: "185.25.180.14" },
-        { region: "Europe", country: "Austria", country_code: "AT", name: "Vienna", ip: "146.66.155.66" },
-        { region: "Europe", country: "Poland", country_code: "PL", name: "Warsaw", ip: "155.133.230.34" },
-        { region: "Europe", country: "Russia", country_code: "RU", name: "Moscow", ip: "146.59.16.129" }
-    ];
-    
-    // Convert array to object with IDs
-    const fallbackServers = {};
-    fallbackData.forEach((server, index) => {
-        const serverId = `server_${index}`;
-        fallbackServers[serverId] = {
-            ...server,
-            id: serverId,
-            flag: getCountryFlag(server.country_code)
-        };
-    });
-    
-    return fallbackServers;
+    return {};
 }
 
 // Get the server list from the backend
@@ -430,9 +359,6 @@ function renderServerList(servers) {
     // Group servers by region
     const regions = {};
     Object.entries(servers).forEach(([serverId, server]) => {
-        // Skip excluded servers
-        if (isServerExcluded(server)) return;
-        
         const region = server.region || 'Other';
         if (!regions[region]) {
             regions[region] = [];
@@ -575,9 +501,23 @@ function displayPingResult(server, result) {
         }
     }
     
-    // Create server info
+    // Create server info with proper flag display
     const serverInfo = document.createElement('h3');
-    serverInfo.innerHTML = `${server.flag || '🌐'} ${server.name || 'Unknown Server'}`;
+    serverInfo.style.display = 'flex';
+    serverInfo.style.alignItems = 'center';
+    serverInfo.style.gap = '8px';
+    
+    const flagDiv = document.createElement('div');
+    flagDiv.className = `server-flag flag-${server.country_code || 'XX'}`;
+    flagDiv.style.width = '24px';
+    flagDiv.style.height = '16px';
+    flagDiv.style.flexShrink = '0';
+    
+    const serverName = document.createElement('span');
+    serverName.textContent = server.name || 'Unknown Server';
+    
+    serverInfo.appendChild(flagDiv);
+    serverInfo.appendChild(serverName);
     resultContainer.appendChild(serverInfo);
     
     // Create IP info
@@ -766,10 +706,8 @@ async function checkAllServers() {
     // Clear previous results
     lastPingResults = {};
     
-    // Get all server IDs (excluding excluded servers)
-    const serverIds = Object.entries(servers)
-        .filter(([_, server]) => !isServerExcluded(server))
-        .map(([id]) => id);
+    // Get all server IDs
+    const serverIds = Object.keys(servers);
     
     // Create a container for all results
     const allResultsContainer = document.createElement('div');
@@ -1281,25 +1219,9 @@ function generateConnectivityReport() {
     // Add check all servers button
     const checkAllButton = document.createElement('button');
     checkAllButton.className = 'retry-button';
-    checkAllButton.style.backgroundColor = '#555';
     checkAllButton.textContent = 'Check All Servers';
     checkAllButton.addEventListener('click', checkAllServers);
     actionContainer.appendChild(checkAllButton);
-    
-    // Add refresh server list button
-    const refreshServerListButton = document.createElement('button');
-    refreshServerListButton.className = 'retry-button';
-    refreshServerListButton.style.backgroundColor = '#333';
-    refreshServerListButton.textContent = 'Refresh Server List';
-    refreshServerListButton.addEventListener('click', async () => {
-        const hasChanges = await refreshServerList(true);
-        if (hasChanges) {
-            // Clear ping results when server list changes
-            lastPingResults = {};
-            generateConnectivityReport();
-        }
-    });
-    actionContainer.appendChild(refreshServerListButton);
     
     reportContainer.appendChild(actionContainer);
     

@@ -7,6 +7,7 @@ use std::net::{TcpStream, ToSocketAddrs};
 use std::time::{Duration, Instant};
 use std::collections::HashMap;
 use serde_json::Value;
+use reqwest;
 // Remove unused import
 // use serde::Deserialize;
 
@@ -17,41 +18,141 @@ use std::os::windows::process::CommandExt;
 #[cfg(target_os = "windows")]
 const CREATE_NO_WINDOW: u32 = 0x08000000;
 
-// Steam server regions with their country code, city name, and IP addresses
-// These are fallback values in case the API call fails
-pub const STEAM_SERVERS: [(&str, &str, &str, &str); 12] = [
-    // North America
-    ("North America", "US", "US East (Virginia)", "162.254.192.73"),
-    ("North America", "US", "US West (Washington)", "162.254.195.71"),
-    
-    // Europe
-    ("Europe", "NL", "Amsterdam", "155.133.248.39"),
-    ("Europe", "DE", "Frankfurt", "162.254.197.42"),
-    ("Europe", "FI", "Helsinki", "155.133.246.69"),
-    ("Europe", "GB", "London", "162.254.196.83"),  // Changed UK to GB for proper flag display
-    ("Europe", "ES", "Madrid", "155.133.246.34"),
-    ("Europe", "FR", "Paris", "162.254.198.43"),
-    ("Europe", "SE", "Stockholm", "185.25.180.14"),
-    ("Europe", "AT", "Vienna", "146.66.155.66"),  // Updated Vienna IP to a current one
-    ("Europe", "PL", "Warsaw", "155.133.230.34"),
-    ("Europe", "RU", "Moscow", "146.59.16.129"),  // Added a Russian server
-];
-
 // Common Steam ports to try - only using port 27017 for faster testing
 const COMMON_STEAM_PORTS: [u16; 1] = [
     27017, // Only check this port as it's the most reliable from logs
 ];
 
 // Steam API URL for server list
-const STEAM_API_URL: &str = "https://api.steampowered.com/ISteamApps/GetSDRConfig/v1/?appid=730&key=";
+const STEAM_API_URL: &str = "https://api.steampowered.com/ISteamApps/GetSDRConfig/v1?appid=730";
 
 // Function to fetch the latest Steam server IPs from the API
 pub fn fetch_steam_servers() -> Result<Vec<(String, String, String, String)>, Error> {
-    // Since we don't have an API key, return the fallback servers directly
-    Ok(STEAM_SERVERS.iter()
-        .map(|(region, country_code, name, ip)| 
-            (region.to_string(), country_code.to_string(), name.to_string(), ip.to_string()))
-        .collect())
+    // Make the API request
+    let response = reqwest::blocking::get(STEAM_API_URL).map_err(|e| {
+        Error::new(ErrorKind::Other, format!("Failed to fetch Steam servers: {}", e))
+    })?;
+    
+    if !response.status().is_success() {
+        return Err(Error::new(ErrorKind::Other, 
+            format!("Steam API request failed with status: {}", response.status())));
+    }
+    
+    let json: Value = response.json().map_err(|e| {
+        Error::new(ErrorKind::Other, format!("Failed to parse JSON response: {}", e))
+    })?;
+    
+    // Parse the response and extract server information
+    let mut servers = Vec::new();
+    let mut country_counts: HashMap<String, i32> = HashMap::new();
+    
+    if let Some(pops) = json["pops"].as_object() {
+        // First pass: collect all servers
+        let mut temp_servers = Vec::new();
+        
+        for (_, pop) in pops {
+            if let (Some(desc), Some(relays)) = (
+                pop["desc"].as_str(),
+                pop["relays"].as_array()
+            ) {
+                // Get region and country code based on location
+                let (region, country_code, country_name) = if desc.contains("Virginia") || desc.contains("Washington") || desc.contains("Chicago") || desc.contains("Atlanta") {
+                    ("North America", "US", "United States")
+                } else if desc.contains("Germany") || desc.contains("Frankfurt") {
+                    ("Europe", "DE", "Germany")
+                } else if desc.contains("Netherlands") || desc.contains("Amsterdam") {
+                    ("Europe", "NL", "Netherlands")
+                } else if desc.contains("Finland") || desc.contains("Helsinki") {
+                    ("Europe", "FI", "Finland")
+                } else if desc.contains("UK") || desc.contains("London") {
+                    ("Europe", "GB", "United Kingdom")
+                } else if desc.contains("Spain") || desc.contains("Madrid") {
+                    ("Europe", "ES", "Spain")
+                } else if desc.contains("France") || desc.contains("Paris") {
+                    ("Europe", "FR", "France")
+                } else if desc.contains("Sweden") || desc.contains("Stockholm") {
+                    ("Europe", "SE", "Sweden")
+                } else if desc.contains("Austria") || desc.contains("Vienna") {
+                    ("Europe", "AT", "Austria")
+                } else if desc.contains("Poland") || desc.contains("Warsaw") {
+                    ("Europe", "PL", "Poland")
+                } else if desc.contains("Russia") || desc.contains("Moscow") {
+                    ("Europe", "RU", "Russia")
+                } else {
+                    continue; // Skip servers that don't match our desired regions
+                };
+
+                // Use the first available relay address
+                if let Some(relay) = relays.first() {
+                    if let Some(ip) = relay["ipv4"].as_str() {
+                        temp_servers.push((
+                            region.to_string(),
+                            country_code.to_string(),
+                            country_name.to_string(),
+                            ip.to_string()
+                        ));
+                        // Count servers per country
+                        *country_counts.entry(country_name.to_string()).or_insert(0) += 1;
+                    }
+                }
+            }
+        }
+
+        // Second pass: format server names with proper numbering
+        for (region, country_code, country_name, ip) in temp_servers {
+            let count = country_counts[&country_name];
+            let current_count = {
+                let key = format!("{}-count", country_name);
+                let current = country_counts.entry(key).or_insert(0);
+                *current += 1;
+                *current
+            };
+
+            // Create a numbered server name (e.g., "Germany Server I")
+            let server_name = format!("{} Server {}", 
+                if region == "North America" { "US" } else { &country_name },
+                if count > 5 {
+                    // If there are more than 5 servers, use Roman numerals for first 5
+                    // and Arabic numbers for the rest
+                    if current_count <= 5 {
+                        match current_count {
+                            1 => "I",
+                            2 => "II",
+                            3 => "III",
+                            4 => "IV",
+                            5 => "V",
+                            _ => unreachable!()
+                        }.to_string()
+                    } else {
+                        format!("{}", current_count)
+                    }
+                } else {
+                    // If 5 or fewer servers, use Roman numerals for all
+                    match current_count {
+                        1 => "I",
+                        2 => "II",
+                        3 => "III",
+                        4 => "IV",
+                        5 => "V",
+                        _ => unreachable!()
+                    }.to_string()
+                }
+            );
+
+            servers.push((
+                region,
+                country_code,
+                server_name,
+                ip
+            ));
+        }
+    }
+    
+    if servers.is_empty() {
+        Err(Error::new(ErrorKind::NotFound, "No servers found in API response"))
+    } else {
+        Ok(servers)
+    }
 }
 
 // Function to ping a server and return the result
@@ -277,12 +378,9 @@ pub fn get_steam_servers() -> Vec<(String, String, String, String)> {
             servers
         }
         Err(e) => {
-            // If failed, log the error and return the fallback servers
+            // If failed, log the error and return an empty vector
             eprintln!("Failed to fetch Steam servers: {}", e);
-            STEAM_SERVERS.iter()
-                .map(|(region, country_code, name, ip)| 
-                    (region.to_string(), country_code.to_string(), name.to_string(), ip.to_string()))
-                .collect()
+            Vec::new()
         }
     }
 }
