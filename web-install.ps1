@@ -88,6 +88,30 @@ catch {
     exit 1
 }
 
+# Try to extract the MSI directly to our installation directory
+Write-Host "Extracting MSI contents directly..." -ForegroundColor Yellow
+$extractDir = "$installDir\extracted"
+if (-not (Test-Path -Path $extractDir)) {
+    New-Item -ItemType Directory -Path $extractDir -Force | Out-Null
+}
+
+try {
+    # Use lessmsi if available, otherwise fall back to msiexec
+    $lessmsiPath = "$env:ProgramFiles\lessmsi\lessmsi.exe"
+    if (Test-Path -Path $lessmsiPath) {
+        Start-Process -FilePath $lessmsiPath -ArgumentList "x `"$msiPath`" `"$extractDir`"" -Wait
+        Write-Host "Extracted MSI using lessmsi" -ForegroundColor Green
+    } else {
+        # Extract using msiexec with administrative install
+        Start-Process -FilePath "msiexec.exe" -ArgumentList "/a `"$msiPath`" /qn TARGETDIR=`"$extractDir`"" -Wait
+        Write-Host "Extracted MSI using msiexec" -ForegroundColor Green
+    }
+}
+catch {
+    Write-Host "Warning: Could not extract MSI directly: $_" -ForegroundColor Yellow
+    # Continue with normal installation
+}
+
 # Install the application
 Write-Host "Installing $appName..." -ForegroundColor Yellow
 try {
@@ -105,36 +129,58 @@ catch {
 }
 
 # Wait a moment for installation to finalize
-Start-Sleep -Seconds 2
+Start-Sleep -Seconds 3
 
 # Find the installed executable - expanded search
 $executablePath = $null
 
-# Common installation paths to check
-$searchPaths = @(
-    "${env:ProgramFiles}\CS2 Server Ping Checker",
-    "${env:ProgramFiles(x86)}\CS2 Server Ping Checker",
-    "${env:LOCALAPPDATA}\Programs\CS2 Server Ping Checker",
-    "${env:APPDATA}\CS2 Server Ping Checker",
-    "${env:LOCALAPPDATA}\CS2 Server Ping Checker",
-    "$env:ProgramFiles",
-    "$env:ProgramFiles(x86)",
-    "$env:LOCALAPPDATA\Programs"
-)
-
-Write-Host "Searching for the executable..." -ForegroundColor Yellow
-
-# First try exact paths
-foreach ($path in $searchPaths) {
-    $testPath = Join-Path -Path $path -ChildPath $exeName
-    if (Test-Path -Path $testPath) {
-        $executablePath = $testPath
-        Write-Host "Found executable at: $executablePath" -ForegroundColor Green
-        break
+# First check if we extracted the MSI successfully
+if (Test-Path -Path $extractDir) {
+    Write-Host "Searching for executable in extracted MSI..." -ForegroundColor Yellow
+    $extractedExes = Get-ChildItem -Path $extractDir -Filter "*.exe" -Recurse -ErrorAction SilentlyContinue
+    
+    if ($extractedExes.Count -gt 0) {
+        # First try to find exact match
+        $exactMatch = $extractedExes | Where-Object { $_.Name -eq $exeName }
+        if ($exactMatch) {
+            $executablePath = $exactMatch.FullName
+            Write-Host "Found exact executable match in extracted MSI: $executablePath" -ForegroundColor Green
+        } else {
+            # Otherwise take the first exe
+            $executablePath = $extractedExes[0].FullName
+            Write-Host "Found potential executable in extracted MSI: $executablePath" -ForegroundColor Green
+        }
     }
 }
 
-# If not found, try a recursive search in common locations
+# If not found in extracted MSI, check common installation paths
+if (-not $executablePath) {
+    # Common installation paths to check
+    $searchPaths = @(
+        "${env:ProgramFiles}\CS2 Server Ping Checker",
+        "${env:ProgramFiles(x86)}\CS2 Server Ping Checker",
+        "${env:LOCALAPPDATA}\Programs\CS2 Server Ping Checker",
+        "${env:APPDATA}\CS2 Server Ping Checker",
+        "${env:LOCALAPPDATA}\CS2 Server Ping Checker",
+        "${env:ProgramFiles}\tauri-apps\CS2 Server Ping Checker",
+        "${env:ProgramFiles(x86)}\tauri-apps\CS2 Server Ping Checker",
+        "${env:LOCALAPPDATA}\Programs\tauri-apps\CS2 Server Ping Checker"
+    )
+
+    Write-Host "Searching for the executable in common paths..." -ForegroundColor Yellow
+
+    # First try exact paths
+    foreach ($path in $searchPaths) {
+        $testPath = Join-Path -Path $path -ChildPath $exeName
+        if (Test-Path -Path $testPath) {
+            $executablePath = $testPath
+            Write-Host "Found executable at: $executablePath" -ForegroundColor Green
+            break
+        }
+    }
+}
+
+# If still not found, try a recursive search in common locations
 if (-not $executablePath) {
     Write-Host "Performing deeper search..." -ForegroundColor Yellow
     
@@ -156,6 +202,73 @@ if (-not $executablePath) {
         Write-Host "All potential executables found:" -ForegroundColor Yellow
         foreach ($exe in $possibleExes) {
             Write-Host "  - $($exe.FullName)" -ForegroundColor Gray
+        }
+    }
+}
+
+# Try to find the Start menu shortcut as a fallback
+if (-not $executablePath) {
+    Write-Host "Searching for Start menu shortcuts..." -ForegroundColor Yellow
+    $startMenuPaths = @(
+        "$env:ProgramData\Microsoft\Windows\Start Menu\Programs",
+        "$env:APPDATA\Microsoft\Windows\Start Menu\Programs"
+    )
+    
+    $startMenuShortcut = $null
+    foreach ($path in $startMenuPaths) {
+        $shortcuts = Get-ChildItem -Path $path -Filter "*.lnk" -Recurse -ErrorAction SilentlyContinue | 
+            Where-Object { $_.Name -like "*CS2*" -or $_.Name -like "*Ping*" -or $_.Name -like "*Server*" }
+        
+        if ($shortcuts.Count -gt 0) {
+            $startMenuShortcut = $shortcuts[0].FullName
+            Write-Host "Found Start menu shortcut at: $startMenuShortcut" -ForegroundColor Green
+            
+            # Try to extract the target path from the shortcut
+            $shell = New-Object -ComObject WScript.Shell
+            $shortcut = $shell.CreateShortcut($startMenuShortcut)
+            $executablePath = $shortcut.TargetPath
+            
+            if (Test-Path -Path $executablePath) {
+                Write-Host "Found executable from shortcut: $executablePath" -ForegroundColor Green
+                break
+            }
+        }
+    }
+}
+
+# Check registry for installed applications as a last resort
+if (-not $executablePath) {
+    Write-Host "Searching registry for installed applications..." -ForegroundColor Yellow
+    $uninstallKeys = @(
+        "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*",
+        "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*",
+        "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*"
+    )
+    
+    foreach ($key in $uninstallKeys) {
+        if (Test-Path $key) {
+            $apps = Get-ItemProperty $key | Where-Object { 
+                $_.DisplayName -like "*CS2*" -or 
+                $_.DisplayName -like "*Ping*" -or 
+                $_.DisplayName -like "*Server*" 
+            }
+            
+            foreach ($app in $apps) {
+                if ($app.InstallLocation -and (Test-Path $app.InstallLocation)) {
+                    Write-Host "Found application in registry: $($app.DisplayName)" -ForegroundColor Green
+                    Write-Host "Install location: $($app.InstallLocation)" -ForegroundColor Green
+                    
+                    # Look for executables in the install location
+                    $exes = Get-ChildItem -Path $app.InstallLocation -Filter "*.exe" -Recurse -ErrorAction SilentlyContinue
+                    if ($exes.Count -gt 0) {
+                        $executablePath = $exes[0].FullName
+                        Write-Host "Found executable: $executablePath" -ForegroundColor Green
+                        break
+                    }
+                }
+            }
+            
+            if ($executablePath) { break }
         }
     }
 }
@@ -207,70 +320,34 @@ else {
     Write-Host "The application may still be installed correctly, but the script couldn't locate the executable." -ForegroundColor Yellow
     Write-Host "You can still run the application from the Start menu." -ForegroundColor Yellow
     
-    # Try to find the Start menu shortcut as a fallback
-    $startMenuPaths = @(
-        "$env:ProgramData\Microsoft\Windows\Start Menu\Programs",
-        "$env:APPDATA\Microsoft\Windows\Start Menu\Programs"
-    )
-    
-    $startMenuShortcut = $null
-    foreach ($path in $startMenuPaths) {
-        $shortcuts = Get-ChildItem -Path $path -Filter "*.lnk" -Recurse -ErrorAction SilentlyContinue | 
-            Where-Object { $_.Name -like "*CS2*" -or $_.Name -like "*Ping*" -or $_.Name -like "*Server*" }
-        
-        if ($shortcuts.Count -gt 0) {
-            $startMenuShortcut = $shortcuts[0].FullName
-            Write-Host "Found Start menu shortcut at: $startMenuShortcut" -ForegroundColor Green
-            
-            # Try to extract the target path from the shortcut
-            $shell = New-Object -ComObject WScript.Shell
-            $shortcut = $shell.CreateShortcut($startMenuShortcut)
-            $executablePath = $shortcut.TargetPath
-            
-            if (Test-Path -Path $executablePath) {
-                Write-Host "Found executable from shortcut: $executablePath" -ForegroundColor Green
-                
-                # Create desktop shortcut
-                $desktopPath = [Environment]::GetFolderPath("Desktop")
-                $shortcutPath = "$desktopPath\CS2 Ping Checker.lnk"
-                $newShortcut = $shell.CreateShortcut($shortcutPath)
-                $newShortcut.TargetPath = $executablePath
-                $newShortcut.WorkingDirectory = (Split-Path -Parent $executablePath)
-                $newShortcut.Description = "CS2 Server Ping Checker"
-                $newShortcut.Save()
-                Write-Host "Desktop shortcut created!" -ForegroundColor Green
-                
-                # Add PowerShell function
-                $profilePath = $PROFILE.CurrentUserAllHosts
-                $profileDir = Split-Path -Parent $profilePath
+    # Create a fallback function that uses Start Menu
+    $profilePath = $PROFILE.CurrentUserAllHosts
+    $profileDir = Split-Path -Parent $profilePath
 
-                if (-not (Test-Path -Path $profileDir)) {
-                    New-Item -ItemType Directory -Path $profileDir -Force | Out-Null
-                }
+    if (-not (Test-Path -Path $profileDir)) {
+        New-Item -ItemType Directory -Path $profileDir -Force | Out-Null
+    }
 
-                if (-not (Test-Path -Path $profilePath)) {
-                    New-Item -ItemType File -Path $profilePath -Force | Out-Null
-                }
+    if (-not (Test-Path -Path $profilePath)) {
+        New-Item -ItemType File -Path $profilePath -Force | Out-Null
+    }
 
-                $functionContent = @"
+    $functionContent = @"
 
 # CS2 Ping Checker function
 function cs2ping {
-    Start-Process -FilePath "$executablePath"
+    # Try to launch via Start Menu
+    $startCommand = "start `"CS2 Server Ping Checker`""
+    Invoke-Expression $startCommand
 }
 "@
 
-                # Check if the function already exists in the profile
-                $profileContent = Get-Content -Path $profilePath -ErrorAction SilentlyContinue
-                if ($profileContent -notcontains $functionContent) {
-                    Write-Host "Adding cs2ping function to PowerShell profile..." -ForegroundColor Yellow
-                    Add-Content -Path $profilePath -Value $functionContent
-                    Write-Host "Function added!" -ForegroundColor Green
-                }
-                
-                break
-            }
-        }
+    # Check if the function already exists in the profile
+    $profileContent = Get-Content -Path $profilePath -ErrorAction SilentlyContinue
+    if ($profileContent -notcontains $functionContent) {
+        Write-Host "Adding fallback cs2ping function to PowerShell profile..." -ForegroundColor Yellow
+        Add-Content -Path $profilePath -Value $functionContent
+        Write-Host "Function added!" -ForegroundColor Green
     }
 }
 
@@ -299,6 +376,16 @@ if ($executablePath) {
 } else {
     Write-Host "The application should be installed, but the script couldn't locate the executable." -ForegroundColor Yellow
     Write-Host "You can run CS2 Ping Checker by finding it in your Start menu." -ForegroundColor Cyan
+    
+    # Try to launch via Start Menu
+    Write-Host "Attempting to launch via Start Menu..." -ForegroundColor Yellow
+    try {
+        $startCommand = "start `"CS2 Server Ping Checker`""
+        Invoke-Expression $startCommand
+        Write-Host "Launch command sent!" -ForegroundColor Green
+    } catch {
+        Write-Host "Could not launch via Start Menu: $_" -ForegroundColor Red
+    }
 }
 
 Write-Host ""
