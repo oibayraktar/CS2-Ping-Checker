@@ -2,8 +2,6 @@
 
 A lightweight desktop application built with Tauri that allows users to check ping times to various Steam servers worldwide. Get real-time latency information with a clean, modern interface.
 
-![Steam Server Ping Checker](screenshot.png)
-
 ## Features
 
 - 🌍 Check ping times to Steam servers worldwide
