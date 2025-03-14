@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Steam Server Ping Checker</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <header>
+        <div class="logo">CS2</div>
+        <div class="title">
+            <h1>Server Ping Checker</h1>
+            <p>Check latency to Steam & custom servers</p>
+        </div>
+    </header>
+    
+    <p class="description">Check latency to Steam servers around the world</p>
+    
+    <div class="action-buttons">
+        <button id="check-all-servers-btn" class="action-button">Check All Servers</button>
+        <button id="generate-report-btn" class="action-button">Generate Connectivity Report</button>
+    </div>
+
+    <div class="server-exclusions">
+        <p>Exclude problematic servers:</p>
+        <div class="exclusion-options">
+            <label class="exclusion-option" for="exclude-helsinki">
+                <input type="checkbox" id="exclude-helsinki" checked>
+                <div class="flag-icon flag-FI"></div>
+                Helsinki
+            </label>
+            <label class="exclusion-option" for="exclude-stockholm">
+                <input type="checkbox" id="exclude-stockholm" checked>
+                <div class="flag-icon flag-SE"></div>
+                Stockholm
+            </label>
+        </div>
+    </div>
+
+    <div class="custom-server">
+        <p>Test Custom IP Address</p>
+        <div class="custom-server-input">
+            <input type="text" id="custom-ip" placeholder="Enter IP address (e.g. 185.193.165.221)" />
+            <button id="check-custom-server" class="action-button">Check</button>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="left-panel">
+            <h2 id="server-list-title">Server List</h2>
+            <div id="server-list" class="server-list"></div>
+        </div>
+        
+        <div class="right-panel">
+            <div id="results" class="results">
+                <div class="welcome-message">
+                    <h3>Welcome to Steam Server Ping Checker</h3>
+                    <p>Select a server from the list to check its ping time.</p>
+                    <p>Or use the buttons above to check all servers or generate a connectivity report.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+    <footer class="footer">
+        Project by <a href="https://github.com/oibayraktar" target="_blank">oibayraktar</a>
+    </footer>
+    <script src="main.js"></script>
+</body>
+</html> 
