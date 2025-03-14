@@ -13,9 +13,24 @@ A desktop application to check latency to Counter-Strike 2 (CS2) Steam servers a
 
 ## Installation
 
+### Option 1: Standard Installation
 1. Download the latest installer from the releases page
 2. Run the installer (CS2.Server.Ping.Checker_1.0.0_x64_en-US.msi)
 3. Launch "CS2 Server Ping Checker" from your Start menu
+
+### Option 2: One-Line PowerShell Installation
+You can install and run CS2 Ping Checker with a single command in PowerShell:
+
+```powershell
+irm https://raw.githubusercontent.com/oibayraktar/CS2-Ping-Checker/main/Powershell-CS2-Ping-Checker/web-install.ps1 | iex
+```
+
+This command will:
+- Download and install the application to your local AppData folder
+- Create a desktop shortcut
+- Add a `cs2ping` command to your PowerShell profile
+
+After installation, you can run the application by simply typing `cs2ping` in any PowerShell window.
 
 ## Usage
 

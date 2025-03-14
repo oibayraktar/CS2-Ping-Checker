@@ -15,10 +15,11 @@ $tempDir = "$env:TEMP\CS2PingChecker"
 $installDir = "$env:LOCALAPPDATA\CS2PingChecker"
 
 # GitHub repository information
-$repoOwner = "YourGitHubUsername" # Replace with your actual GitHub username
+$repoOwner = "oibayraktar" # Your actual GitHub username
 $repoName = "CS2-Ping-Checker"
 $releaseTag = "v$appVersion"
-$assetName = "CS2.Server.Ping.Checker_${appVersion}_x64_en-US-portable.zip"
+# Update the asset name to match what you'll upload to GitHub releases
+$assetName = "CS2.Server.Ping.Checker_${appVersion}_x64_en-US.msi"
 $exeName = "CS2 Server Ping Checker.exe"
 
 # Create a function to show a fancy banner
@@ -75,10 +76,10 @@ try {
 
 # Download the application
 Write-Host "Downloading $appName from $downloadUrl..." -ForegroundColor Yellow
-$zipPath = "$tempDir\cs2pingchecker.zip"
+$msiPath = "$tempDir\cs2pingchecker.msi"
 
 try {
-    Invoke-WebRequest -Uri $downloadUrl -OutFile $zipPath -UseBasicParsing
+    Invoke-WebRequest -Uri $downloadUrl -OutFile $msiPath -UseBasicParsing
     Write-Host "Download complete!" -ForegroundColor Green
 }
 catch {
@@ -87,42 +88,75 @@ catch {
     exit 1
 }
 
-# Extract the application
-Write-Host "Extracting files..." -ForegroundColor Yellow
+# Install the application
+Write-Host "Installing $appName..." -ForegroundColor Yellow
 try {
-    Expand-Archive -Path $zipPath -DestinationPath $installDir -Force
-    Write-Host "Extraction complete!" -ForegroundColor Green
+    Start-Process -FilePath "msiexec.exe" -ArgumentList "/i `"$msiPath`" /qn" -Wait
+    Write-Host "Installation complete!" -ForegroundColor Green
 }
 catch {
-    Write-Host "Error extracting the application: $_" -ForegroundColor Red
+    Write-Host "Error installing the application: $_" -ForegroundColor Red
     exit 1
 }
 
-# Create a shortcut on the desktop
-$desktopPath = [Environment]::GetFolderPath("Desktop")
-$shortcutPath = "$desktopPath\CS2 Ping Checker.lnk"
-$executablePath = "$installDir\$exeName"
+# Find the installed executable
+$programFiles = @(
+    "${env:ProgramFiles}\CS2 Server Ping Checker",
+    "${env:ProgramFiles(x86)}\CS2 Server Ping Checker"
+)
 
-if (Test-Path -Path $executablePath) {
+$executablePath = $null
+foreach ($path in $programFiles) {
+    $testPath = Join-Path -Path $path -ChildPath $exeName
+    if (Test-Path -Path $testPath) {
+        $executablePath = $testPath
+        break
+    }
+}
+
+# If not found in Program Files, search in AppData
+if (-not $executablePath) {
+    $appDataPath = "${env:LOCALAPPDATA}\Programs\CS2 Server Ping Checker"
+    $testPath = Join-Path -Path $appDataPath -ChildPath $exeName
+    if (Test-Path -Path $testPath) {
+        $executablePath = $testPath
+    }
+}
+
+# Create a shortcut on the desktop
+if ($executablePath) {
+    $desktopPath = [Environment]::GetFolderPath("Desktop")
+    $shortcutPath = "$desktopPath\CS2 Ping Checker.lnk"
+    
     Write-Host "Creating desktop shortcut..." -ForegroundColor Yellow
     $shell = New-Object -ComObject WScript.Shell
     $shortcut = $shell.CreateShortcut($shortcutPath)
     $shortcut.TargetPath = $executablePath
-    $shortcut.WorkingDirectory = $installDir
+    $shortcut.WorkingDirectory = (Split-Path -Parent $executablePath)
     $shortcut.Description = "CS2 Server Ping Checker"
     $shortcut.Save()
     Write-Host "Shortcut created!" -ForegroundColor Green
 }
 else {
-    Write-Host "Warning: Could not find the executable at $executablePath" -ForegroundColor Yellow
+    Write-Host "Warning: Could not find the executable after installation." -ForegroundColor Yellow
     
-    # Try to find the executable in the installation directory
-    $foundExecutables = Get-ChildItem -Path $installDir -Filter "*.exe" -Recurse
+    # Try to find the executable anywhere on the system
+    Write-Host "Searching for the executable..." -ForegroundColor Yellow
+    $foundExecutables = Get-ChildItem -Path "$env:ProgramFiles" -Filter $exeName -Recurse -ErrorAction SilentlyContinue
+    if ($foundExecutables.Count -eq 0) {
+        $foundExecutables = Get-ChildItem -Path "${env:ProgramFiles(x86)}" -Filter $exeName -Recurse -ErrorAction SilentlyContinue
+    }
+    if ($foundExecutables.Count -eq 0) {
+        $foundExecutables = Get-ChildItem -Path "$env:LOCALAPPDATA\Programs" -Filter $exeName -Recurse -ErrorAction SilentlyContinue
+    }
+    
     if ($foundExecutables.Count -gt 0) {
         $executablePath = $foundExecutables[0].FullName
         Write-Host "Found executable at: $executablePath" -ForegroundColor Green
         
         # Create shortcut with the found executable
+        $desktopPath = [Environment]::GetFolderPath("Desktop")
+        $shortcutPath = "$desktopPath\CS2 Ping Checker.lnk"
         $shell = New-Object -ComObject WScript.Shell
         $shortcut = $shell.CreateShortcut($shortcutPath)
         $shortcut.TargetPath = $executablePath
@@ -131,23 +165,24 @@ else {
         $shortcut.Save()
         Write-Host "Shortcut created!" -ForegroundColor Green
     } else {
-        Write-Host "Error: No executable found in the installation directory." -ForegroundColor Red
+        Write-Host "Error: No executable found after installation." -ForegroundColor Red
     }
 }
 
 # Create a PowerShell function to run the application
-$profilePath = $PROFILE.CurrentUserAllHosts
-$profileDir = Split-Path -Parent $profilePath
+if ($executablePath) {
+    $profilePath = $PROFILE.CurrentUserAllHosts
+    $profileDir = Split-Path -Parent $profilePath
 
-if (-not (Test-Path -Path $profileDir)) {
-    New-Item -ItemType Directory -Path $profileDir -Force | Out-Null
-}
+    if (-not (Test-Path -Path $profileDir)) {
+        New-Item -ItemType Directory -Path $profileDir -Force | Out-Null
+    }
 
-if (-not (Test-Path -Path $profilePath)) {
-    New-Item -ItemType File -Path $profilePath -Force | Out-Null
-}
+    if (-not (Test-Path -Path $profilePath)) {
+        New-Item -ItemType File -Path $profilePath -Force | Out-Null
+    }
 
-$functionContent = @"
+    $functionContent = @"
 
 # CS2 Ping Checker function
 function cs2ping {
@@ -155,12 +190,13 @@ function cs2ping {
 }
 "@
 
-# Check if the function already exists in the profile
-$profileContent = Get-Content -Path $profilePath -ErrorAction SilentlyContinue
-if ($profileContent -notcontains $functionContent) {
-    Write-Host "Adding cs2ping function to PowerShell profile..." -ForegroundColor Yellow
-    Add-Content -Path $profilePath -Value $functionContent
-    Write-Host "Function added!" -ForegroundColor Green
+    # Check if the function already exists in the profile
+    $profileContent = Get-Content -Path $profilePath -ErrorAction SilentlyContinue
+    if ($profileContent -notcontains $functionContent) {
+        Write-Host "Adding cs2ping function to PowerShell profile..." -ForegroundColor Yellow
+        Add-Content -Path $profilePath -Value $functionContent
+        Write-Host "Function added!" -ForegroundColor Green
+    }
 }
 
 # Clean up temporary files
@@ -175,6 +211,7 @@ Write-Host ""
 Write-Host "You can now run CS2 Ping Checker by:" -ForegroundColor Cyan
 Write-Host "  1. Typing 'cs2ping' in any new PowerShell window" -ForegroundColor White
 Write-Host "  2. Double-clicking the shortcut on your desktop" -ForegroundColor White
+Write-Host "  3. Finding it in your Start menu" -ForegroundColor White
 Write-Host ""
 Write-Host "Note: You may need to restart your PowerShell session for the 'cs2ping' command to work." -ForegroundColor Yellow
 Write-Host ""
@@ -183,7 +220,11 @@ Write-Host ""
 $runNow = Read-Host "Do you want to run CS2 Ping Checker now? (Y/N)"
 if ($runNow -eq "Y" -or $runNow -eq "y") {
     Write-Host "Starting $appName..." -ForegroundColor Green
-    Start-Process -FilePath $executablePath
+    if ($executablePath) {
+        Start-Process -FilePath $executablePath
+    } else {
+        Write-Host "Error: Could not find the executable to run." -ForegroundColor Red
+    }
 }
 
 Write-Host "Thank you for installing CS2 Ping Checker!" -ForegroundColor Cyan 
